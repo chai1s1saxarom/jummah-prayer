@@ -1,4 +1,10 @@
-// Калькулятор времени молитв
+// prayer-calculator.js - Калькулятор времени молитв с поддержкой аутентификации
+
+// Глобальные переменные для аутентификации
+window.currentUser = null;
+window.authToken = localStorage.getItem('authToken');
+window.apiBaseUrl = window.location.origin; // Базовый URL API
+
 class PrayerTimesCalculator {
     constructor() {
         this.latitude = 55.7558; // Москва по умолчанию
@@ -9,30 +15,47 @@ class PrayerTimesCalculator {
         this.prayerTimes = {};
         this.selectedDate = new Date();
         
+        // Инициализация аутентификации
+        this.authToken = window.authToken;
+        this.isAuthenticated = !!this.authToken;
+        
         // Загружаем сохраненные настройки
         this.loadSettings();
+        
+        // Регистрируем глобальный экземпляр для доступа из других модулей
+        if (typeof window !== 'undefined') {
+            window.prayerCalculator = this;
+        }
     }
     
     loadSettings() {
         const saved = localStorage.getItem('prayerSettings');
         if (saved) {
-            const settings = JSON.parse(saved);
-            this.latitude = settings.latitude || this.latitude;
-            this.longitude = settings.longitude || this.longitude;
-            this.city = settings.city || this.city;
-            this.calculationMethod = settings.calculationMethod || this.calculationMethod;
-            this.madhhab = settings.madhhab || this.madhhab;
+            try {
+                const settings = JSON.parse(saved);
+                this.latitude = settings.latitude || this.latitude;
+                this.longitude = settings.longitude || this.longitude;
+                this.city = settings.city || this.city;
+                this.calculationMethod = settings.calculationMethod || this.calculationMethod;
+                this.madhhab = settings.madhhab || this.madhhab;
+            } catch (e) {
+                console.error('Ошибка загрузки настроек:', e);
+            }
         }
     }
     
     saveSettings() {
-        localStorage.setItem('prayerSettings', JSON.stringify({
-            latitude: this.latitude,
-            longitude: this.longitude,
-            city: this.city,
-            calculationMethod: this.calculationMethod,
-            madhhab: this.madhhab
-        }));
+        try {
+            localStorage.setItem('prayerSettings', JSON.stringify({
+                latitude: this.latitude,
+                longitude: this.longitude,
+                city: this.city,
+                calculationMethod: this.calculationMethod,
+                madhhab: this.madhhab
+            }));
+        } catch (e) {
+            console.error('Ошибка сохранения настроек:', e);
+        }
     }
     
     setLocation(lat, lon, cityName = '') {
@@ -52,6 +75,17 @@ class PrayerTimesCalculator {
     setMadhhab(madhhab) {
         this.madhhab = parseInt(madhhab);
         this.saveSettings();
+    }
+    
+    // Установка токена авторизации
+    setAuthToken(token) {
+        this.authToken = token;
+        this.isAuthenticated = !!token;
+        if (token) {
+            localStorage.setItem('authToken', token);
+        } else {
+            localStorage.removeItem('authToken');
+        }
     }
     
     // Получение кода метода для API
@@ -75,27 +109,42 @@ class PrayerTimesCalculator {
         return `${year}-${month}-${day}`;
     }
     
-    // Запрос времени молитв из C++ API
+    // Запрос времени молитв из API с поддержкой авторизации
     async fetchPrayerTimes(date = null) {
         const targetDate = date || this.selectedDate;
         const year = targetDate.getFullYear();
         const month = targetDate.getMonth() + 1;
         const day = targetDate.getDate();
         
-        // Используем локальный C++ API вместо внешнего
-        const apiUrl = window.location.origin; // Используем тот же домен
-        const url = `${apiUrl}/api/prayer-times?lat=${this.latitude}&lon=${this.longitude}&city=${encodeURIComponent(this.city)}&method=${this.calculationMethod}&madhhab=${this.madhhab}&year=${year}&month=${month}&day=${day}`;
+        const url = `${window.apiBaseUrl}/api/prayer-times?lat=${this.latitude}&lon=${this.longitude}&city=${encodeURIComponent(this.city)}&method=${this.calculationMethod}&madhhab=${this.madhhab}&year=${year}&month=${month}&day=${day}`;
         
         try {
+            const headers = {
+                'Accept': 'application/json',
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache'
+            };
+            
+            // Добавляем токен авторизации, если есть
+            if (this.authToken) {
+                headers['Authorization'] = `Bearer ${this.authToken}`;
+            }
+            
             const response = await fetch(url, {
                 method: 'GET',
-                headers: {
-                    'Accept': 'application/json',
-                    'Cache-Control': 'no-cache, no-store, must-revalidate',
-                    'Pragma': 'no-cache'
-                },
+                headers: headers,
                 cache: 'no-store'
             });
+            
+            // Обработка ошибок авторизации
+            if (response.status === 401) {
+                console.warn('Требуется авторизация для доступа к API');
+                // Можно вызвать событие для обновления интерфейса
+                if (typeof window !== 'undefined') {
+                    window.dispatchEvent(new CustomEvent('authRequired'));
+                }
+            }
+            
             const data = await response.json();
             
             if (data.success && data.data) {
@@ -110,13 +159,20 @@ class PrayerTimesCalculator {
                     currentPrayer: data.data.currentPrayer,
                     nextPrayer: data.data.nextPrayer
                 };
+                
                 // Обновляем город, если он изменился
                 if (data.data.city) {
                     this.city = data.data.city;
                 }
+                
+                // Обновляем статистику, если пользователь авторизован
+                if (this.isAuthenticated && typeof this.updateUserStats === 'function') {
+                    await this.updateUserStats();
+                }
+                
                 return this.prayerTimes;
             } else {
-                throw new Error('Invalid API response');
+                throw new Error(data.message || 'Invalid API response');
             }
         } catch (error) {
             console.error('Ошибка при получении времени молитв:', error);
@@ -125,10 +181,75 @@ class PrayerTimesCalculator {
         }
     }
     
+    // Обновление статистики пользователя
+    async updateUserStats() {
+        if (!this.isAuthenticated || !this.authToken) {
+            return;
+        }
+        
+        try {
+            const statsUrl = `${window.apiBaseUrl}/api/user/stats`;
+            const response = await fetch(statsUrl, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${this.authToken}`,
+                    'Accept': 'application/json'
+                }
+            });
+            
+            if (response.ok) {
+                const stats = await response.json();
+                // Обновляем интерфейс статистики
+                this.updateStatsUI(stats);
+            }
+        } catch (error) {
+            console.error('Ошибка получения статистики:', error);
+        }
+    }
+    
+    // Обновление UI статистики
+    updateStatsUI(stats) {
+        const userCountElement = document.getElementById('user-count');
+        const requestCountElement = document.getElementById('request-count');
+        
+        if (userCountElement && stats.totalUsers !== undefined) {
+            userCountElement.textContent = stats.totalUsers.toLocaleString();
+        }
+        
+        if (requestCountElement && stats.totalRequests !== undefined) {
+            requestCountElement.textContent = stats.totalRequests.toLocaleString();
+        }
+        
+        // Обновление в настройках профиля
+        const profileInfoElement = document.getElementById('profile-info');
+        if (profileInfoElement && stats.userStats) {
+            this.updateProfileUI(stats.userStats);
+        }
+    }
+    
+    // Обновление UI профиля
+    updateProfileUI(userStats) {
+        const profileInfoElement = document.getElementById('profile-info');
+        if (!profileInfoElement) return;
+        
+        profileInfoElement.innerHTML = `
+            <div class="profile-header">
+                <div class="profile-avatar">
+                    <i class="fas fa-user-circle"></i>
+                </div>
+                <div class="profile-details">
+                    <h3>${window.currentUser?.name || 'Пользователь'}</h3>
+                    <p>${window.currentUser?.email || ''}</p>
+                    <p class="profile-stats">Запросов времени: ${userStats.prayerRequests || 0}</p>
+                    <p class="profile-stats">Последний вход: ${userStats.lastLogin || 'Недавно'}</p>
+                </div>
+            </div>
+        `;
+    }
+    
     // Форматирование времени из API (HH:mm -> HH:mm)
     formatTime(timeStr) {
-        // API возвращает время в формате "HH:mm"
-        return timeStr.substring(0, 5);
+        return timeStr?.substring(0, 5) || '--:--';
     }
     
     // Форматирование даты для отображения
@@ -141,27 +262,42 @@ class PrayerTimesCalculator {
     
     // Локальный расчет времени молитв (fallback)
     calculatePrayerTimesLocal(date) {
-        // Упрощенная версия - в реальности нужен полный алгоритм
-        // Пока возвращаем пустые значения, так как API должен работать
+        // Упрощенный расчет на основе координат
+        // В реальном приложении здесь был бы сложный алгоритм
+        const now = date || new Date();
+        const month = now.getMonth();
+        const isSummer = month >= 4 && month <= 9; // Апрель-сентябрь
+        
+        // Базовые времена для Москвы
+        const baseTimes = {
+            fajr: "03:30",
+            sunrise: "05:30",
+            dhuhr: "12:30",
+            asr: "16:30",
+            maghrib: "20:00",
+            isha: "21:30"
+        };
+        
+        // Корректировка для сезона
+        if (isSummer) {
+            baseTimes.fajr = "02:30";
+            baseTimes.sunrise = "04:30";
+            baseTimes.maghrib = "21:00";
+            baseTimes.isha = "22:30";
+        }
+        
         return {
-            fajr: "05:00",
-            sunrise: "06:30",
-            dhuhr: "12:00",
-            asr: "15:00",
-            maghrib: "18:00",
-            isha: "19:30",
+            ...baseTimes,
             date: this.formatDateDisplay(date)
         };
     }
     
-    // Получение текущей молитвы (теперь из API)
+    // Получение текущей молитвы
     getCurrentPrayer() {
-        // Если есть данные из API, используем их
         if (this.prayerTimes && this.prayerTimes.currentPrayer) {
             return this.prayerTimes.currentPrayer;
         }
         
-        // Fallback на локальный расчет
         if (!this.prayerTimes || Object.keys(this.prayerTimes).length === 0) {
             return "Isha";
         }
@@ -187,14 +323,12 @@ class PrayerTimesCalculator {
         return "Isha";
     }
     
-    // Получение следующей молитвы (теперь из API)
+    // Получение следующей молитвы
     getNextPrayer() {
-        // Если есть данные из API, используем их
         if (this.prayerTimes && this.prayerTimes.nextPrayer) {
             return this.prayerTimes.nextPrayer;
         }
         
-        // Fallback на локальный расчет
         if (!this.prayerTimes || Object.keys(this.prayerTimes).length === 0) {
             return "Fajr";
         }
@@ -248,8 +382,63 @@ class PrayerTimesCalculator {
     }
 }
 
-// Экспорт для использования в других файлах
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = PrayerTimesCalculator;
+// Глобальная функция для обертки fetch с авторизацией
+async function fetchWithAuth(url, options = {}) {
+    const headers = {
+        'Accept': 'application/json',
+        ...options.headers
+    };
+    
+    // Добавляем токен авторизации, если есть
+    if (window.authToken) {
+        headers['Authorization'] = `Bearer ${window.authToken}`;
+    }
+    
+    try {
+        const response = await fetch(url, {
+            ...options,
+            headers: headers
+        });
+        
+        // Обработка ошибок авторизации
+        if (response.status === 401) {
+            console.warn('Требуется авторизация');
+            // Сбрасываем аутентификацию
+            window.authToken = null;
+            localStorage.removeItem('authToken');
+            window.currentUser = null;
+            
+            // Обновляем UI
+            if (typeof window.updateAuthUI === 'function') {
+                window.updateAuthUI();
+            }
+            
+            throw new Error('Требуется авторизация');
+        }
+        
+        return response;
+    } catch (error) {
+        console.error('Ошибка запроса:', error);
+        throw error;
+    }
 }
 
+// Функция для получения времени молитв с авторизацией
+async function fetchPrayerTimesWithAuth(url) {
+    return fetchWithAuth(url, {
+        headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache'
+        },
+        cache: 'no-store'
+    });
+}
+
+// Экспорт для использования в других файлах
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        PrayerTimesCalculator,
+        fetchWithAuth,
+        fetchPrayerTimesWithAuth
+    };
+}

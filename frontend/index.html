@@ -41,9 +41,40 @@
     
     <!-- Стили -->
     <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
 </head>
 <body>
-    <!-- Главная страница -->
+    <!-- Шапка с аутентификацией (из второго файла) -->
+    <header class="main-header">
+        <nav class="navbar">
+            <div class="nav-brand">
+                <i class="fas fa-mosque"></i>
+                <span>Jummah Prayer</span>
+            </div>
+            
+            <div class="nav-auth" id="nav-auth">
+                <button class="btn btn-outline" onclick="showLoginForm()">
+                    <i class="fas fa-sign-in-alt"></i> Вход
+                </button>
+                <button class="btn btn-primary" onclick="showRegisterForm()">
+                    <i class="fas fa-user-plus"></i> Регистрация
+                </button>
+            </div>
+            
+            <div class="nav-user" id="nav-user" style="display: none;">
+                <div class="user-info">
+                    <i class="fas fa-user-circle"></i>
+                    <span id="user-name">Пользователь</span>
+                </div>
+                <button class="btn btn-outline btn-small" onclick="logout()">
+                    <i class="fas fa-sign-out-alt"></i> Выйти
+                </button>
+            </div>
+        </nav>
+    </header>
+
+    <!-- Главная страница (из первого файла) -->
     <div id="main-page" class="page active">
         <!-- Заголовок с таймером -->
         <div class="header-gradient">
@@ -108,19 +139,16 @@
         </div>
     </div>
 
-    <!-- Страница Киблы и Карты -->
-    <!-- Страница Зикра -->
+    <!-- Остальные страницы (из первого файла) -->
     <div id="dhikr-page" class="page">
         <div class="page-header">
             <h1 data-i18n="Dhikr and Duas">📿 Зикры и Дуа</h1>
         </div>
         
-        <!-- Список зикров -->
         <div class="dhikr-list" id="dhikr-list">
             <!-- Заполняется через JavaScript -->
         </div>
         
-        <!-- Диалог счетчика зикра -->
         <div id="dhikr-counter-dialog" class="modal">
             <div class="modal-content dhikr-counter-modal">
                 <h2 id="dhikr-counter-title">Субханаллах</h2>
@@ -144,7 +172,6 @@
         </div>
     </div>
 
-    <!-- Страница Настроек -->
     <div id="settings-page" class="page">
         <div class="page-header">
             <h1 data-i18n="Settings">⚙️ Настройки</h1>
@@ -340,7 +367,7 @@
         </div>
     </div>
 
-    <!-- Диалог выбора даты -->
+    <!-- Диалоги (из первого файла) -->
     <div id="date-dialog" class="modal">
         <div class="modal-content">
             <h2 data-i18n="Date Selection">Выбор даты</h2>
@@ -361,7 +388,6 @@
         </div>
     </div>
 
-    <!-- Диалог поиска города -->
     <div id="city-dialog" class="modal">
         <div class="modal-content">
             <h2 data-i18n="City Selection">Выбор города</h2>
@@ -374,6 +400,122 @@
         </div>
     </div>
 
+    <!-- Модальные окна аутентификации (из второго файла) -->
+    <div class="modal" id="login-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><i class="fas fa-sign-in-alt"></i> Вход в систему</h2>
+                <button class="modal-close" onclick="hideLoginForm()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="login-form">
+                    <div class="form-group">
+                        <label for="login-email">
+                            <i class="fas fa-envelope"></i> Email адрес
+                        </label>
+                        <input type="email" id="login-email" required placeholder="Введите ваш email">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="login-password">
+                            <i class="fas fa-lock"></i> Пароль
+                        </label>
+                        <input type="password" id="login-password" required placeholder="Введите ваш пароль">
+                        <div class="password-toggle">
+                            <i class="fas fa-eye" onclick="togglePassword('login-password', this)"></i>
+                        </div>
+                    </div>
+                    
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary btn-block">
+                            <i class="fas fa-sign-in-alt"></i> Войти
+                        </button>
+                        <button type="button" class="btn btn-outline btn-block" onclick="showRegisterForm()">
+                            <i class="fas fa-user-plus"></i> Зарегистрироваться
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="register-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><i class="fas fa-user-plus"></i> Регистрация</h2>
+                <button class="modal-close" onclick="hideRegisterForm()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="register-form">
+                    <div class="form-group">
+                        <label for="register-name">
+                            <i class="fas fa-user"></i> Имя
+                        </label>
+                        <input type="text" id="register-name" required placeholder="Введите ваше имя">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="register-email">
+                            <i class="fas fa-envelope"></i> Email адрес
+                        </label>
+                        <input type="email" id="register-email" required placeholder="Введите ваш email">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="register-password">
+                            <i class="fas fa-lock"></i> Пароль
+                        </label>
+                        <input type="password" id="register-password" required placeholder="Введите пароль (минимум 8 символов)">
+                        <div class="password-toggle">
+                            <i class="fas fa-eye" onclick="togglePassword('register-password', this)"></i>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="register-confirm-password">
+                            <i class="fas fa-lock"></i> Подтверждение пароля
+                        </label>
+                        <input type="password" id="register-confirm-password" required placeholder="Повторите пароль">
+                        <div class="password-toggle">
+                            <i class="fas fa-eye" onclick="togglePassword('register-confirm-password', this)"></i>
+                        </div>
+                    </div>
+                    
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary btn-block">
+                            <i class="fas fa-user-plus"></i> Зарегистрироваться
+                        </button>
+                        <button type="button" class="btn btn-outline btn-block" onclick="showLoginForm()">
+                            <i class="fas fa-sign-in-alt"></i> Уже есть аккаунт
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Футер (из второго файла) -->
+    <footer class="main-footer">
+        <div class="footer-content">
+            <div class="footer-section">
+                <h4><i class="fas fa-mosque"></i> Jummah Prayer</h4>
+                <p>Приложение для определения времени молитв</p>
+            </div>
+            <div class="footer-section">
+                <h4>Контакты</h4>
+                <p>support@jummahprayer.com</p>
+            </div>
+            <div class="footer-section">
+                <h4>Источники данных</h4>
+                <p>Aladhan API • OpenStreetMap</p>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <p>&copy; 2024 Jummah Prayer. Все права защищены.</p>
+        </div>
+    </footer>
+
+    <!-- Скрипты -->
     <script src="translations.js"></script>
     <script src="prayer-calculator.js"></script>
     <!-- Модули приложения -->
@@ -393,8 +535,9 @@
     <script src="js/events.js"></script>
     <script src="js/articles.js"></script>
     <script src="js/ui-enhancements.js"></script>
+    <!-- Аутентификация -->
+    <script src="js/auth.js"></script>
     <!-- Главный файл инициализации -->
     <script src="js/app.js"></script>
 </body>
 </html>
-
